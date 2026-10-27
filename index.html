@@ -1,0 +1,1223 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Control de Vencimientos de Camiones 2026</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- SheetJS para lectura de archivos Excel -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <!-- FontAwesome Íconos -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f0f9ff',
+              100: '#e0f2fe',
+              500: '#0284c7',
+              600: '#0369a1',
+              700: '#035483',
+              900: '#0c4a6e',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 4px;
+    }
+    @keyframes pulse-light {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    .animate-pulse-light {
+      animation: pulse-light 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+    @media print {
+      .no-print { display: none !important; }
+      body { background: white !important; color: black !important; }
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col font-sans antialiased relative">
+
+  <!-- Toast Container -->
+  <div id="toastContainer" class="fixed top-5 right-5 z-50 flex flex-col gap-2 max-w-sm pointer-events-none"></div>
+
+  <header class="bg-slate-900 border-b border-slate-800 sticky top-0 z-30 no-print">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-col md:flex-row items-center justify-between gap-4">
+      <div class="flex items-center justify-between w-full md:w-auto">
+        <div class="flex items-center space-x-3">
+          <div class="w-10 h-10 rounded-xl bg-brand-600 flex items-center justify-center text-white shadow-lg shadow-brand-600/30">
+            <i class="fa-solid fa-truck-front text-lg"></i>
+          </div>
+          <div>
+            <h1 class="text-lg font-bold text-white tracking-wide flex items-center gap-2">
+              <span>Control de Camiones 2026</span>
+              <span id="syncBadge" class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                <i class="fa-solid fa-cloud-check mr-1"></i> Sincronizado
+              </span>
+            </h1>
+            <p class="text-xs text-slate-400">Gestión de Vencimientos y Mantenimiento Preventivo</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-2 w-full md:w-auto justify-end">
+        <input type="file" id="excelFileInput" accept=".xlsx, .xls, .csv" class="hidden" onchange="readExcelFile(event)">
+        
+        <button onclick="document.getElementById('excelFileInput').click()" class="px-3.5 py-2 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/20 transition flex items-center space-x-2">
+          <i class="fa-solid fa-file-excel"></i>
+          <span>Cargar Excel</span>
+        </button>
+
+        <button onclick="openFormModal()" class="px-3.5 py-2 rounded-xl text-xs font-semibold bg-brand-600 hover:bg-brand-500 text-white shadow-md shadow-brand-600/20 transition flex items-center space-x-2">
+          <i class="fa-solid fa-plus"></i>
+          <span>Nuevo Registro</span>
+        </button>
+
+        <button onclick="requestResetModal()" class="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-400 border border-slate-700 transition" title="Restablecer Datos Iniciales">
+          <i class="fa-solid fa-rotate-left text-base"></i>
+        </button>
+
+        <button onclick="sendWhatsAppSummary()" class="p-2 rounded-xl bg-slate-800 hover:bg-emerald-600/20 text-emerald-400 hover:text-emerald-300 border border-slate-700 transition" title="Enviar Resumen por WhatsApp">
+          <i class="fa-brands fa-whatsapp text-base"></i>
+        </button>
+
+        <button onclick="exportCSV()" class="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition" title="Exportar reporte CSV">
+          <i class="fa-solid fa-download text-base"></i>
+        </button>
+
+        <button onclick="window.print()" class="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition" title="Imprimir o PDF">
+          <i class="fa-solid fa-print text-base"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1 w-full space-y-6">
+
+    <!-- Date Config & Urgent Alert Banner -->
+    <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-slate-900 border border-slate-800 rounded-2xl p-3.5 no-print">
+      <div class="flex items-center space-x-2 text-xs text-slate-300">
+        <i class="fa-solid fa-calendar-day text-brand-400 text-sm"></i>
+        <span class="font-semibold">Fecha Base de Cálculo de Alertas:</span>
+        <input type="date" id="refDateInput" onchange="updateRefDate(this.value)" class="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1 text-white text-xs focus:outline-none focus:border-brand-500 font-mono">
+      </div>
+      <div class="text-[11px] text-slate-400 flex items-center space-x-2">
+        <span>Haz clic en <strong class="text-slate-200">Estado de Alerta</strong> en la tabla para ordenar por urgencia.</span>
+      </div>
+    </div>
+
+    <!-- Alert Banner -->
+    <div id="urgentAlertBanner" class="hidden bg-rose-950/60 border border-rose-500/40 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-rose-200 text-xs sm:text-sm">
+      <div class="flex items-center space-x-3">
+        <div class="w-8 h-8 rounded-lg bg-rose-600/30 text-rose-400 flex items-center justify-center shrink-0">
+          <i class="fa-solid fa-triangle-exclamation text-base animate-pulse"></i>
+        </div>
+        <div>
+          <span class="font-bold text-rose-100 block sm:inline">🚨 Atención: Alertas de Vencimiento Críticas</span>
+          <span id="urgentAlertMessage" class="text-rose-300">Hay servicios o documentos vencidos o por vencer en los próximos 15 días.</span>
+        </div>
+      </div>
+      <button onclick="filterByUrgent()" class="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg font-semibold text-xs transition shrink-0">
+        Ver Solo Alertas
+      </button>
+    </div>
+
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div onclick="filterByAll()" class="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex items-center justify-between cursor-pointer hover:border-slate-700 transition">
+        <div>
+          <p class="text-xs font-medium text-slate-400">Total Servicios</p>
+          <h3 id="statTotal" class="text-2xl font-black text-white mt-1">0</h3>
+        </div>
+        <div class="w-10 h-10 rounded-xl bg-slate-800 text-brand-400 flex items-center justify-center border border-slate-700">
+          <i class="fa-solid fa-list-check text-lg"></i>
+        </div>
+      </div>
+
+      <div onclick="filterByUrgent()" class="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex items-center justify-between cursor-pointer hover:border-amber-500/50 transition">
+        <div>
+          <p class="text-xs font-medium text-slate-400">Próximos (≤15 Días)</p>
+          <h3 id="statUpcoming" class="text-2xl font-black text-amber-400 mt-1">0</h3>
+        </div>
+        <div class="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center border border-amber-500/20">
+          <i class="fa-solid fa-clock text-lg"></i>
+        </div>
+      </div>
+
+      <div onclick="filterByOverdue()" class="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex items-center justify-between cursor-pointer hover:border-rose-500/50 transition">
+        <div>
+          <p class="text-xs font-medium text-slate-400">Vencidos (Críticos)</p>
+          <h3 id="statOverdue" class="text-2xl font-black text-rose-500 mt-1">0</h3>
+        </div>
+        <div class="w-10 h-10 rounded-xl bg-rose-500/10 text-rose-400 flex items-center justify-center border border-rose-500/20">
+          <i class="fa-solid fa-triangle-exclamation text-lg"></i>
+        </div>
+      </div>
+
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex items-center justify-between">
+        <div>
+          <p class="text-xs font-medium text-slate-400">Costo Estimado Total</p>
+          <h3 id="statCost" class="text-2xl font-black text-emerald-400 mt-1">$0</h3>
+        </div>
+        <div class="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center border border-emerald-500/20">
+          <i class="fa-solid fa-dollar-sign text-lg"></i>
+        </div>
+      </div>
+    </div>
+
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 no-print space-y-3">
+      <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+        <div class="relative">
+          <i class="fa-solid fa-magnifying-glass absolute left-3 top-3 text-slate-500 text-xs"></i>
+          <input type="text" id="searchInput" oninput="applyFilters()" placeholder="Buscar por placa, taller o tipo..." class="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-brand-500 transition">
+        </div>
+
+        <div>
+          <select id="monthFilter" onchange="applyFilters()" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-brand-500 transition">
+            <option value="all">Todos los Meses (2026)</option>
+            <option value="01">Enero 2026</option>
+            <option value="02">Febrero 2026</option>
+            <option value="03">Marzo 2026</option>
+            <option value="04">Abril 2026</option>
+            <option value="05">Mayo 2026</option>
+            <option value="06">Junio 2026</option>
+            <option value="07">Julio 2026</option>
+            <option value="08">Agosto 2026</option>
+            <option value="09">Septiembre 2026</option>
+            <option value="10">Octubre 2026</option>
+            <option value="11">Noviembre 2026</option>
+            <option value="12">Diciembre 2026</option>
+          </select>
+        </div>
+
+        <div>
+          <select id="statusFilter" onchange="applyFilters()" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-brand-500 transition">
+            <option value="all">Todos los Estados del Servicio</option>
+            <option value="Programado">Programado</option>
+            <option value="En Taller">En Taller</option>
+            <option value="Completado">Completado</option>
+          </select>
+        </div>
+
+        <div>
+          <select id="urgencyFilter" onchange="applyFilters()" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-brand-500 transition font-semibold">
+            <option value="all">🔍 Filtro Estado de Alerta (Todos)</option>
+            <option value="overdue">🚨 Ya Vencidos (&lt;0 Días)</option>
+            <option value="critical">⚠️ Críticos (0 a 7 Días)</option>
+            <option value="warning">⚡ Advertencia (8 a 15 Días)</option>
+            <option value="urgent">🔔 Todos los Próximos (≤15 Días)</option>
+            <option value="ok">✅ Al Día / Futuros / Completados</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="flex items-center justify-between border-b border-slate-800 pb-3 no-print">
+      <div class="flex items-center space-x-2 bg-slate-900 p-1 rounded-xl border border-slate-800">
+        <button onclick="switchTab('table')" id="tabBtn-table" class="px-4 py-2 rounded-lg text-xs font-semibold bg-brand-600 text-white shadow transition flex items-center space-x-2">
+          <i class="fa-solid fa-table"></i>
+          <span>Tabla de Vencimientos</span>
+        </button>
+        <button onclick="switchTab('calendar')" id="tabBtn-calendar" class="px-4 py-2 rounded-lg text-xs font-semibold text-slate-400 hover:text-white transition flex items-center space-x-2">
+          <i class="fa-solid fa-calendar-days"></i>
+          <span>Calendario</span>
+        </button>
+        <button onclick="switchTab('charts')" id="tabBtn-charts" class="px-4 py-2 rounded-lg text-xs font-semibold text-slate-400 hover:text-white transition flex items-center space-x-2">
+          <i class="fa-solid fa-chart-pie"></i>
+          <span>Gráficos y Resumen</span>
+        </button>
+      </div>
+
+      <span id="recordsCounter" class="text-xs text-slate-400 font-medium hidden sm:inline">Cargando registros...</span>
+    </div>
+
+    <div id="view-table" class="tab-content bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+      <div class="overflow-x-auto custom-scrollbar">
+        <table class="w-full text-left text-xs border-collapse">
+          <thead class="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800 uppercase tracking-wider">
+            <tr>
+              <th onclick="toggleSort('fecha')" class="py-3.5 px-4 cursor-pointer hover:text-white transition select-none">
+                Fecha <i id="sortIcon-fecha" class="fa-solid fa-sort ml-1 text-slate-500"></i>
+              </th>
+              <th onclick="toggleSort('placa')" class="py-3.5 px-4 cursor-pointer hover:text-white transition select-none">
+                Placa / Unidad <i id="sortIcon-placa" class="fa-solid fa-sort ml-1 text-slate-500"></i>
+              </th>
+              <th class="py-3.5 px-4">Tipo de Servicio</th>
+              <th onclick="toggleSort('alerta')" class="py-3.5 px-4 cursor-pointer hover:text-amber-400 transition select-none text-amber-300 font-bold bg-amber-500/10 border-x border-amber-500/20">
+                <i class="fa-solid fa-bell mr-1"></i> Estado de Alerta <i id="sortIcon-alerta" class="fa-solid fa-sort-down ml-1 text-amber-400"></i>
+              </th>
+              <th class="py-3.5 px-4">Taller Asignado</th>
+              <th class="py-3.5 px-4">Estado</th>
+              <th class="py-3.5 px-4 text-right no-print">Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody" class="divide-y divide-slate-800/60 text-slate-300">
+            <!-- Dynamic rows generated by JS -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="view-calendar" class="tab-content hidden bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-6 space-y-4">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
+        <h2 id="calendarTitle" class="text-sm font-bold text-white flex items-center space-x-2">
+          <i class="fa-solid fa-calendar text-brand-400"></i>
+          <span>Calendario de Mantenimiento 2026</span>
+        </h2>
+        
+        <div class="flex flex-wrap items-center gap-1.5">
+          <button onclick="setCalendarMonth('08')" id="monthBtn-08" class="cal-month-btn px-3 py-1 rounded-lg text-xs font-semibold bg-brand-600 text-white transition">Ago</button>
+          <button onclick="setCalendarMonth('09')" id="monthBtn-09" class="cal-month-btn px-3 py-1 rounded-lg text-xs font-semibold text-slate-400 hover:text-white bg-slate-800 transition">Sep</button>
+          <button onclick="setCalendarMonth('10')" id="monthBtn-10" class="cal-month-btn px-3 py-1 rounded-lg text-xs font-semibold text-slate-400 hover:text-white bg-slate-800 transition">Oct</button>
+          <button onclick="setCalendarMonth('11')" id="monthBtn-11" class="cal-month-btn px-3 py-1 rounded-lg text-xs font-semibold text-slate-400 hover:text-white bg-slate-800 transition">Nov</button>
+          <button onclick="setCalendarMonth('12')" id="monthBtn-12" class="cal-month-btn px-3 py-1 rounded-lg text-xs font-semibold text-slate-400 hover:text-white bg-slate-800 transition">Dic</button>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-7 gap-1 text-center font-bold text-xs text-slate-400 py-1">
+        <div>Lun</div><div>Mar</div><div>Mié</div><div>Jue</div><div>Vie</div><div>Sáb</div><div>Dom</div>
+      </div>
+
+      <div id="calendarGrid" class="grid grid-cols-7 gap-1.5 sm:gap-2">
+        <!-- Dynamic calendar grid cells -->
+      </div>
+    </div>
+
+    <div id="view-charts" class="tab-content hidden grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+        <h3 class="text-xs font-bold text-slate-300 mb-4 flex items-center space-x-2">
+          <i class="fa-solid fa-chart-bar text-brand-400"></i>
+          <span>Servicios por Mes (2026)</span>
+        </h3>
+        <div class="h-64">
+          <canvas id="monthlyChart"></canvas>
+        </div>
+      </div>
+
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+        <h3 class="text-xs font-bold text-slate-300 mb-4 flex items-center space-x-2">
+          <i class="fa-solid fa-chart-pie text-emerald-400"></i>
+          <span>Distribución por Tipo de Servicio</span>
+        </h3>
+        <div class="h-64">
+          <canvas id="typeChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <div id="formModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl relative">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <h3 id="formModalTitle" class="text-sm font-bold text-white">Nuevo Servicio / Mantenimiento</h3>
+        <button onclick="closeFormModal()" class="text-slate-400 hover:text-white transition">
+          <i class="fa-solid fa-xmark text-base"></i>
+        </button>
+      </div>
+
+      <form id="recordForm" onsubmit="handleFormSubmit(event)" class="space-y-3.5 text-xs">
+        <input type="hidden" id="editRecordId">
+
+        <div>
+          <label class="block font-medium text-slate-300 mb-1">Placa / Unidad Camión *</label>
+          <input type="text" id="formPlaca" required placeholder="Ej. NNN617 o DOS 863" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-brand-500 uppercase font-bold tracking-wider">
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block font-medium text-slate-300 mb-1">Fecha Programada *</label>
+            <input type="date" id="formFecha" required class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-brand-500 font-mono">
+          </div>
+          <div>
+            <label class="block font-medium text-slate-300 mb-1">Costo Estimado ($)</label>
+            <input type="number" id="formCosto" placeholder="450" min="0" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-brand-500">
+          </div>
+        </div>
+
+        <div>
+          <label class="block font-medium text-slate-300 mb-1">Tipo de Servicio *</label>
+          <select id="formTipo" required class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-brand-500">
+            <option value="MANT PREVENTIVO">MANT PREVENTIVO</option>
+            <option value="REVISIÓN FRENOS">REVISIÓN FRENOS</option>
+            <option value="INSPECCIÓN TÉCNICA (VTV)">INSPECCIÓN TÉCNICA (VTV)</option>
+            <option value="CAMBIO NEUMÁTICOS">CAMBIO NEUMÁTICOS</option>
+            <option value="CAMBIO ACEITE Y FILTROS">CAMBIO ACEITE Y FILTROS</option>
+            <option value="HABILITACIÓN MUNICIPAL">HABILITACIÓN MUNICIPAL</option>
+            <option value="PÓLIZA DE RESPONSABILIDAD CIVIL">PÓLIZA DE RESPONSABILIDAD CIVIL</option>
+            <option value="TRAMITE ADMINISTRATIVO">TRAMITE ADMINISTRATIVO</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block font-medium text-slate-300 mb-1">Taller / Entidad Asignada</label>
+          <input type="text" id="formTaller" placeholder="Ej. Taller Principal Sur o Municipalidad" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-brand-500">
+        </div>
+
+        <div>
+          <label class="block font-medium text-slate-300 mb-1">Estado</label>
+          <select id="formEstado" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-brand-500">
+            <option value="Programado">Programado</option>
+            <option value="En Taller">En Taller</option>
+            <option value="Completado">Completado</option>
+          </select>
+        </div>
+
+        <div class="flex items-center justify-end space-x-2 pt-2 border-t border-slate-800">
+          <button type="button" onclick="closeFormModal()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-semibold transition">Cancelar</button>
+          <button type="submit" id="saveSubmitBtn" class="px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white rounded-xl font-semibold shadow transition flex items-center space-x-2">
+            <span>Guardar Registro</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="confirmModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-2xl">
+      <div class="flex items-center space-x-3 text-rose-400">
+        <div class="w-10 h-10 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center shrink-0">
+          <i class="fa-solid fa-trash-can text-lg"></i>
+        </div>
+        <div>
+          <h4 class="font-bold text-white text-sm">¿Eliminar registro?</h4>
+          <p class="text-xs text-slate-400">Esta acción no se puede deshacer.</p>
+        </div>
+      </div>
+      <div class="flex justify-end space-x-2 pt-2 border-t border-slate-800 text-xs">
+        <button onclick="closeConfirmModal(false)" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-semibold transition">Cancelar</button>
+        <button onclick="closeConfirmModal(true)" class="px-3.5 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-xl font-semibold shadow transition">Eliminar</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="resetModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-2xl">
+      <div class="flex items-center space-x-3 text-amber-400">
+        <div class="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center shrink-0">
+          <i class="fa-solid fa-rotate-left text-lg"></i>
+        </div>
+        <div>
+          <h4 class="font-bold text-white text-sm">¿Restablecer Datos Iniciales?</h4>
+          <p class="text-xs text-slate-400">Se restaurará el conjunto de datos de prueba original.</p>
+        </div>
+      </div>
+      <div class="flex justify-end space-x-2 pt-2 border-t border-slate-800 text-xs">
+        <button onclick="closeResetModal(false)" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-semibold transition">Cancelar</button>
+        <button onclick="closeResetModal(true)" class="px-3.5 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl font-semibold shadow transition">Restablecer</button>
+      </div>
+    </div>
+  </div>
+
+  <footer class="bg-slate-900 border-t border-slate-800 py-4 mt-8 no-print text-center text-xs text-slate-500">
+    <p>© 2026 FleetGuard - Control Inteligente de Flota con Estado de Alerta Dinámico.</p>
+  </footer>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    // Default demo dataset
+    const defaultData = [
+      { id: "1", placa: "NNN617", fecha: "2026-08-22", tipo: "MANT PREVENTIVO", taller: "Taller Principal Sur", costo: 480, estado: "Programado" },
+      { id: "2", placa: "DOS 863", fecha: "2026-08-18", tipo: "MANT PREVENTIVO", taller: "Taller Fleet Services", costo: 520, estado: "Programado" },
+      { id: "3", placa: "BDK128", fecha: "2026-08-28", tipo: "REVISIÓN FRENOS", taller: "Taller Central Flotas", costo: 240, estado: "Programado" },
+      { id: "4", placa: "AXX902", fecha: "2026-08-10", tipo: "INSPECCIÓN TÉCNICA (VTV)", taller: "Centro Técnico VTV", costo: 120, estado: "Completado" },
+      { id: "5", placa: "C9M456", fecha: "2026-09-05", tipo: "CAMBIO NEUMÁTICOS", taller: "Michelin Pro Center", costo: 850, estado: "Programado" },
+      { id: "6", placa: "NNN617", fecha: "2026-09-15", tipo: "REVISIÓN FRENOS", taller: "Taller Principal Sur", costo: 210, estado: "Programado" },
+      { id: "7", placa: "DOS 863", fecha: "2026-10-18", tipo: "INSPECCIÓN TÉCNICA (VTV)", taller: "Centro Técnico VTV", costo: 130, estado: "Programado" },
+      { id: "8", placa: "BDK128", fecha: "2026-11-29", tipo: "MANT PREVENTIVO", taller: "Taller Central Flotas", costo: 490, estado: "Programado" },
+      { id: "9", placa: "FGT789", fecha: "2026-12-05", tipo: "MANT PREVENTIVO", taller: "Taller Diesel Tech", costo: 510, estado: "Programado" }
+    ];
+
+    function loadLocalBackup() {
+      try {
+        const saved = localStorage.getItem('fleet_truck_data_2026');
+        if (saved !== null) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return parsed;
+          }
+        }
+      } catch (e) {
+        console.warn("Error accediendo a LocalStorage:", e);
+      }
+      return null;
+    }
+
+    function saveLocalBackup(data) {
+      try {
+        localStorage.setItem('fleet_truck_data_2026', JSON.stringify(data));
+      } catch (e) {
+        console.warn("Error guardando en LocalStorage:", e);
+      }
+    }
+
+    // Set real default today date if possible (2026-08-31)
+    const todayStr = new Date().toISOString().split('T')[0];
+    window.refDateStr = todayStr.startsWith('2026') ? todayStr : "2026-08-31";
+
+    window.dataset = loadLocalBackup() || [...defaultData];
+    window.filteredData = [...window.dataset];
+    window.selectedCalendarMonth = "08";
+    window.chartMonthly = null;
+    window.chartType = null;
+    window.pendingDeleteId = null;
+
+    // Table sorting state: default by alert urgency
+    window.currentSortField = 'alerta'; 
+    window.currentSortAsc = true; 
+
+    let db, auth, servicesColRef;
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'truck-control-2026';
+
+    async function initCloudPersistence() {
+      try {
+        let firebaseConfig = null;
+        if (typeof __firebase_config !== 'undefined') {
+          firebaseConfig = typeof __firebase_config === 'string' ? JSON.parse(__firebase_config) : __firebase_config;
+        }
+
+        if (!firebaseConfig) {
+          updateSyncBadge("Modo Guardado Local", "emerald");
+          window.applyFilters();
+          return;
+        }
+
+        const app = initializeApp(firebaseConfig);
+        db = getFirestore(app);
+        auth = getAuth(app);
+
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+
+        if (!auth.currentUser) return;
+
+        servicesColRef = collection(db, 'artifacts', appId, 'public', 'data', 'truck_services_2026');
+
+        onSnapshot(servicesColRef, async (snapshot) => {
+          if (snapshot.empty && window.dataset.length > 0) {
+            for (const item of window.dataset) {
+              await setDoc(doc(servicesColRef, item.id), item);
+            }
+            return;
+          }
+
+          const loaded = [];
+          snapshot.forEach(docSnap => {
+            loaded.push({ id: docSnap.id, ...docSnap.data() });
+          });
+
+          window.dataset = loaded;
+          saveLocalBackup(loaded);
+          updateSyncBadge("Sincronizado Nube", "emerald");
+          window.applyFilters();
+        }, (error) => {
+          console.error("Error en Firestore, usando copia local:", error);
+          updateSyncBadge("Guardado Local", "emerald");
+          window.applyFilters();
+        });
+
+      } catch (err) {
+        console.warn("Firestore error fallback to local storage:", err);
+        updateSyncBadge("Guardado Local", "emerald");
+        window.applyFilters();
+      }
+    }
+
+    window.saveRecordCloud = async function(record) {
+      const idx = window.dataset.findIndex(d => d.id === record.id);
+      if (idx !== -1) window.dataset[idx] = record;
+      else window.dataset.push(record);
+
+      saveLocalBackup(window.dataset);
+      window.applyFilters();
+
+      if (servicesColRef && db && auth?.currentUser) {
+        updateSyncBadge("Guardando...", "amber");
+        try {
+          await setDoc(doc(servicesColRef, record.id), record);
+          updateSyncBadge("Sincronizado Nube", "emerald");
+          showToast("✓ Registro guardado en nube y local", "success");
+        } catch (err) {
+          updateSyncBadge("Guardado Local", "emerald");
+          showToast("✓ Registro guardado en almacenamiento local", "success");
+        }
+      } else {
+        showToast("✓ Registro guardado localmente", "success");
+      }
+    };
+
+    window.toggleCompleteStatus = async function(id) {
+      const rec = window.dataset.find(d => d.id === id);
+      if (!rec) return;
+
+      rec.estado = rec.estado === 'Completado' ? 'Programado' : 'Completado';
+      await window.saveRecordCloud(rec);
+      showToast(`Servicio ${rec.placa} marcado como ${rec.estado}`, "info");
+    };
+
+    window.deleteRecordCloud = async function(id) {
+      window.dataset = window.dataset.filter(d => d.id !== id);
+      saveLocalBackup(window.dataset);
+      window.applyFilters();
+
+      if (servicesColRef && db && auth?.currentUser) {
+        updateSyncBadge("Guardando...", "amber");
+        try {
+          await deleteDoc(doc(servicesColRef, id));
+          updateSyncBadge("Sincronizado Nube", "emerald");
+          showToast("🗑️ Registro eliminado", "info");
+        } catch (err) {
+          updateSyncBadge("Guardado Local", "emerald");
+          showToast("🗑️ Registro eliminado localmente", "info");
+        }
+      } else {
+        showToast("🗑️ Registro eliminado localmente", "info");
+      }
+    };
+
+    window.saveBatchCloud = async function(records) {
+      window.dataset = records;
+      saveLocalBackup(window.dataset);
+      window.applyFilters();
+
+      if (servicesColRef && db && auth?.currentUser) {
+        updateSyncBadge("Importando...", "amber");
+        for (const item of records) {
+          await setDoc(doc(servicesColRef, item.id), item);
+        }
+        updateSyncBadge("Sincronizado Nube", "emerald");
+        showToast(`✓ ${records.length} registros guardados en la nube`, "success");
+      } else {
+        showToast(`✓ ${records.length} registros cargados localmente`, "success");
+      }
+    };
+
+    window.requestResetModal = function() {
+      document.getElementById('resetModal').classList.remove('hidden');
+    };
+
+    window.closeResetModal = async function(confirmed) {
+      document.getElementById('resetModal').classList.add('hidden');
+      if (confirmed) {
+        window.dataset = [...defaultData];
+        saveLocalBackup(window.dataset);
+        
+        if (servicesColRef && db && auth?.currentUser) {
+          for (const item of defaultData) {
+            await setDoc(doc(servicesColRef, item.id), item);
+          }
+        }
+        showToast("🔄 Datos de fábrica restablecidos", "info");
+        window.applyFilters();
+      }
+    };
+
+    function updateSyncBadge(text, color) {
+      const badge = document.getElementById('syncBadge');
+      if (!badge) return;
+      if (color === 'emerald') {
+        badge.className = "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-500/20 text-emerald-400 border border-emerald-500/30";
+        badge.innerHTML = `<i class="fa-solid fa-cloud-check mr-1"></i> ${text}`;
+      } else if (color === 'amber') {
+        badge.className = "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-500/20 text-amber-400 border border-amber-500/30 animate-pulse-light";
+        badge.innerHTML = `<i class="fa-solid fa-cloud-arrow-up mr-1"></i> ${text}`;
+      } else {
+        badge.className = "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-rose-500/20 text-rose-400 border border-rose-500/30";
+        badge.innerHTML = `<i class="fa-solid fa-triangle-exclamation mr-1"></i> ${text}`;
+      }
+    }
+
+    window.getDaysUntil = function(dateStr) {
+      const ref = new Date(window.refDateStr + "T00:00:00");
+      const evt = new Date(dateStr + "T00:00:00");
+      const diffTime = evt - ref;
+      return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    };
+
+    window.updateRefDate = function(newDate) {
+      if (!newDate) return;
+      window.refDateStr = newDate;
+      window.applyFilters();
+      showToast(`🗓️ Base de alerta actualizada a: ${newDate}`, "info");
+    };
+
+    window.getAlertStatusInfo = function(item) {
+      if (item.estado === 'Completado') {
+        return {
+          rank: 99,
+          type: 'ok',
+          label: 'Al Día',
+          badgeHTML: '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"><i class="fa-solid fa-circle-check text-[9px] mr-1 text-emerald-400"></i>Al Día</span>'
+        };
+      }
+
+      const days = window.getDaysUntil(item.fecha);
+
+      if (days < 0) {
+        const absDays = Math.abs(days);
+        return {
+          rank: 1, // Highest urgency
+          days: days,
+          type: 'overdue',
+          label: `Vencido (${absDays}d)`,
+          badgeHTML: `<span class="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-black bg-rose-600/30 text-rose-200 border border-rose-500/60 shadow-sm shadow-rose-900/50"><i class="fa-solid fa-triangle-exclamation mr-1 text-rose-400 animate-pulse"></i>🚨 VENCIDO (${absDays}d)</span>`
+        };
+      } else if (days <= 7) {
+        return {
+          rank: 2,
+          days: days,
+          type: 'critical',
+          label: days === 0 ? '¡VENCE HOY!' : `Crítico (${days}d)`,
+          badgeHTML: `<span class="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-amber-500/25 text-amber-200 border border-amber-500/50 animate-pulse"><i class="fa-solid fa-fire mr-1 text-amber-400"></i>⚠️ ${days === 0 ? 'HOY' : days + ' días restantes'}</span>`
+        };
+      } else if (days <= 15) {
+        return {
+          rank: 3,
+          days: days,
+          type: 'warning',
+          label: `Próximo (${days}d)`,
+          badgeHTML: `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-yellow-500/15 text-yellow-300 border border-yellow-500/30"><i class="fa-solid fa-clock mr-1 text-yellow-400"></i>⚡ ${days} días</span>`
+        };
+      } else {
+        return {
+          rank: 4,
+          days: days,
+          type: 'future',
+          label: `En ${days} días`,
+          badgeHTML: `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-800 text-slate-400 border border-slate-700"><i class="fa-solid fa-calendar mr-1 text-slate-500"></i>En ${days} días</span>`
+        };
+      }
+    };
+
+    window.applyFilters = function() {
+      const search = document.getElementById('searchInput').value.toLowerCase().trim();
+      const month = document.getElementById('monthFilter').value;
+      const status = document.getElementById('statusFilter').value;
+      const urgency = document.getElementById('urgencyFilter').value;
+
+      window.filteredData = window.dataset.filter(item => {
+        if (month !== 'all') {
+          const itemMonth = item.fecha.split('-')[1];
+          if (itemMonth !== month) return false;
+        }
+
+        if (status !== 'all' && item.estado !== status) return false;
+
+        const alertInfo = window.getAlertStatusInfo(item);
+        if (urgency === 'overdue' && alertInfo.type !== 'overdue') return false;
+        if (urgency === 'critical' && alertInfo.type !== 'critical') return false;
+        if (urgency === 'warning' && alertInfo.type !== 'warning') return false;
+        if (urgency === 'urgent' && (alertInfo.rank > 3 || item.estado === 'Completado')) return false;
+        if (urgency === 'ok' && alertInfo.type !== 'ok' && alertInfo.type !== 'future') return false;
+
+        if (search) {
+          const combined = `${item.placa} ${item.tipo} ${item.taller} ${item.fecha}`.toLowerCase();
+          if (!combined.includes(search)) return false;
+        }
+
+        return true;
+      });
+
+      // Apply current sorting
+      sortFilteredData();
+
+      renderKPIs();
+      renderAlertBanner();
+      renderTable();
+      renderCalendar();
+      updateCharts();
+    };
+
+    window.toggleSort = function(field) {
+      if (window.currentSortField === field) {
+        window.currentSortAsc = !window.currentSortAsc;
+      } else {
+        window.currentSortField = field;
+        window.currentSortAsc = true;
+      }
+      window.applyFilters();
+    };
+
+    function sortFilteredData() {
+      const field = window.currentSortField;
+      const asc = window.currentSortAsc ? 1 : -1;
+
+      window.filteredData.sort((a, b) => {
+        if (field === 'alerta') {
+          const alertA = window.getAlertStatusInfo(a);
+          const alertB = window.getAlertStatusInfo(b);
+          if (alertA.rank !== alertB.rank) {
+            return (alertA.rank - alertB.rank) * asc;
+          }
+          return (window.getDaysUntil(a.fecha) - window.getDaysUntil(b.fecha)) * asc;
+        } else if (field === 'fecha') {
+          return a.fecha.localeCompare(b.fecha) * asc;
+        } else if (field === 'placa') {
+          return a.placa.localeCompare(b.placa) * asc;
+        } else if (field === 'costo') {
+          return ((Number(a.costo) || 0) - (Number(b.costo) || 0)) * asc;
+        }
+        return 0;
+      });
+
+      // Update UI sort indicators
+      ['fecha', 'placa', 'alerta', 'costo'].forEach(f => {
+        const icon = document.getElementById(`sortIcon-${f}`);
+        if (!icon) return;
+        if (f === field) {
+          icon.className = window.currentSortAsc ? "fa-solid fa-sort-up ml-1 text-brand-400" : "fa-solid fa-sort-down ml-1 text-brand-400";
+        } else {
+          icon.className = "fa-solid fa-sort ml-1 text-slate-600";
+        }
+      });
+    }
+
+    function renderKPIs() {
+      const total = window.filteredData.length;
+      let upcoming = 0;
+      let overdue = 0;
+      let cost = 0;
+
+      window.dataset.forEach(item => {
+        cost += Number(item.costo) || 0;
+        if (item.estado !== 'Completado') {
+          const days = window.getDaysUntil(item.fecha);
+          if (days < 0) overdue++;
+          else if (days <= 15) upcoming++;
+        }
+      });
+
+      document.getElementById('statTotal').innerText = total;
+      document.getElementById('statUpcoming').innerText = upcoming;
+      document.getElementById('statOverdue').innerText = overdue;
+      document.getElementById('statCost').innerText = `$${cost.toLocaleString('en-US')}`;
+      document.getElementById('recordsCounter').innerText = `Mostrando ${total} de ${window.dataset.length} registros`;
+    }
+
+    function renderAlertBanner() {
+      const urgentItems = window.dataset.filter(item => {
+        if (item.estado === 'Completado') return false;
+        const days = window.getDaysUntil(item.fecha);
+        return days <= 15;
+      });
+
+      const banner = document.getElementById('urgentAlertBanner');
+      if (urgentItems.length > 0) {
+        banner.classList.remove('hidden');
+        const plates = urgentItems.map(i => {
+          const d = window.getDaysUntil(i.fecha);
+          return `${i.placa} (${d < 0 ? 'VENCIDO' : d + 'd'})`;
+        }).join(', ');
+        document.getElementById('urgentAlertMessage').innerHTML = `Se detectan <strong>${urgentItems.length} alertas críticas:</strong> <span class="text-amber-300 font-semibold">${plates}</span>.`;
+      } else {
+        banner.classList.add('hidden');
+      }
+    }
+
+    function renderTable() {
+      const tbody = document.getElementById('tableBody');
+      tbody.innerHTML = '';
+
+      if (window.filteredData.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="7" class="text-center py-8 text-slate-500">
+              <i class="fa-solid fa-inbox text-2xl mb-2 block"></i>
+              No hay registros disponibles con los filtros aplicados.
+            </td>
+          </tr>
+        `;
+        return;
+      }
+
+      window.filteredData.forEach(item => {
+        const alertInfo = window.getAlertStatusInfo(item);
+        
+        let statusBadge = '';
+        if (item.estado === 'Completado') {
+          statusBadge = '<span class="text-emerald-400 font-semibold flex items-center gap-1"><i class="fa-solid fa-check text-[10px]"></i>Completado</span>';
+        } else if (item.estado === 'En Taller') {
+          statusBadge = '<span class="text-amber-400 font-semibold flex items-center gap-1"><i class="fa-solid fa-wrench text-[10px]"></i>En Taller</span>';
+        } else {
+          statusBadge = '<span class="text-slate-300">Programado</span>';
+        }
+
+        const tr = document.createElement('tr');
+        const isOverdue = alertInfo.type === 'overdue';
+        tr.className = `hover:bg-slate-800/60 transition border-b border-slate-800/40 ${isOverdue ? 'bg-rose-950/20' : ''}`;
+        
+        tr.innerHTML = `
+          <td class="py-3 px-4 font-mono font-medium text-slate-200">${item.fecha}</td>
+          <td class="py-3 px-4 font-bold text-white">
+            <i class="fa-solid fa-truck text-slate-400 mr-1.5"></i>${item.placa}
+          </td>
+          <td class="py-3 px-4 font-medium text-slate-300">${item.tipo}</td>
+          <td class="py-3 px-4 bg-amber-500/5 border-x border-slate-800/60">${alertInfo.badgeHTML}</td>
+          <td class="py-3 px-4 text-slate-400">${item.taller || 'Taller Central'}</td>
+          <td class="py-3 px-4">${statusBadge}</td>
+          <td class="py-3 px-4 text-right space-x-1 no-print">
+            <button onclick="toggleCompleteStatus('${item.id}')" class="p-1.5 rounded-lg ${item.estado === 'Completado' ? 'text-emerald-400 bg-emerald-500/10' : 'text-slate-400 hover:text-emerald-400 hover:bg-slate-800'} transition" title="${item.estado === 'Completado' ? 'Marcar como Programado' : 'Marcar como Completado'}">
+              <i class="fa-solid fa-circle-check"></i>
+            </button>
+            <button onclick="sendWhatsAppItem('${item.id}')" class="p-1.5 rounded-lg text-emerald-400 hover:bg-emerald-600/20 transition" title="Enviar WhatsApp">
+              <i class="fa-brands fa-whatsapp"></i>
+            </button>
+            <button onclick="openFormModal('${item.id}')" class="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition" title="Editar">
+              <i class="fa-solid fa-pen-to-square"></i>
+            </button>
+            <button onclick="requestDeleteRecord('${item.id}')" class="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition" title="Eliminar">
+              <i class="fa-solid fa-trash"></i>
+            </button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function renderCalendar() {
+      const grid = document.getElementById('calendarGrid');
+      if (!grid) return;
+      grid.innerHTML = '';
+
+      const monthNames = { '01':'Ene','02':'Feb','03':'Mar','04':'Abr','05':'May','06':'Jun','07':'Jul','08': 'Agosto', '09': 'Septiembre', '10': 'Octubre', '11': 'Noviembre', '12': 'Diciembre' };
+      document.getElementById('calendarTitle').innerHTML = `<i class="fa-solid fa-calendar text-brand-400 mr-2"></i>Calendario: ${monthNames[window.selectedCalendarMonth] || ''} 2026`;
+
+      const monthIdx = parseInt(window.selectedCalendarMonth, 10) - 1;
+      const firstDay = new Date(2026, monthIdx, 1);
+      const lastDay = new Date(2026, monthIdx + 1, 0);
+
+      let startDay = firstDay.getDay(); 
+      startDay = startDay === 0 ? 6 : startDay - 1;
+
+      for (let i = 0; i < startDay; i++) {
+        const emptyCell = document.createElement('div');
+        emptyCell.className = "bg-slate-950/40 rounded-xl p-1 min-h-[70px] opacity-20 border border-slate-900";
+        grid.appendChild(emptyCell);
+      }
+
+      const totalDays = lastDay.getDate();
+      for (let day = 1; day <= totalDays; day++) {
+        const dayStr = day < 10 ? '0' + day : '' + day;
+        const dateStr = `2026-${window.selectedCalendarMonth}-${dayStr}`;
+
+        const dayEvents = window.filteredData.filter(d => d.fecha === dateStr);
+
+        const dayCell = document.createElement('div');
+        dayCell.className = `bg-slate-950 border ${dayEvents.length > 0 ? 'border-brand-500/50' : 'border-slate-800'} rounded-xl p-1.5 min-h-[75px] flex flex-col justify-between`;
+
+        let eventsHTML = '';
+        dayEvents.forEach(evt => {
+          const alertInfo = window.getAlertStatusInfo(evt);
+          let bgClass = 'bg-brand-600/20 text-brand-300';
+          if (alertInfo.type === 'overdue') bgClass = 'bg-rose-600/30 text-rose-200 border border-rose-500/40 font-bold';
+          else if (alertInfo.type === 'critical') bgClass = 'bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold';
+          else if (evt.estado === 'Completado') bgClass = 'bg-emerald-500/20 text-emerald-300';
+
+          eventsHTML += `
+            <div onclick="openFormModal('${evt.id}')" class="p-1 rounded text-[10px] ${bgClass} truncate cursor-pointer hover:scale-[1.02] transition">
+              🚚 ${evt.placa}
+            </div>
+          `;
+        });
+
+        dayCell.innerHTML = `
+          <div class="flex items-center justify-between text-[11px] font-bold text-slate-400">
+            <span>${day}</span>
+            ${dayEvents.length > 0 ? `<span class="w-1.5 h-1.5 rounded-full bg-brand-400"></span>` : ''}
+          </div>
+          <div class="space-y-1 mt-1 overflow-y-auto max-h-[50px] custom-scrollbar">
+            ${eventsHTML}
+          </div>
+        `;
+
+        grid.appendChild(dayCell);
+      }
+    }
+
+    function initCharts() {
+      const ctxM = document.getElementById('monthlyChart').getContext('2d');
+      window.chartMonthly = new Chart(ctxM, {
+        type: 'bar',
+        data: { labels: ['Ago', 'Sep', 'Oct', 'Nov', 'Dic'], datasets: [{ data: [0,0,0,0,0], backgroundColor: '#0284c7', borderRadius: 6 }] },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#94a3b8' } }, y: { ticks: { color: '#94a3b8' } } } }
+      });
+
+      const ctxT = document.getElementById('typeChart').getContext('2d');
+      window.chartType = new Chart(ctxT, {
+        type: 'doughnut',
+        data: { labels: [], datasets: [{ data: [], backgroundColor: ['#0284c7', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'] }] },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { color: '#94a3b8', font: { size: 10 } } } } }
+      });
+    }
+
+    function updateCharts() {
+      if (!window.chartMonthly) return;
+
+      const months = ['08', '09', '10', '11', '12'];
+      const counts = months.map(m => window.filteredData.filter(d => d.fecha.split('-')[1] === m).length);
+      window.chartMonthly.data.datasets[0].data = counts;
+      window.chartMonthly.update();
+
+      const types = [...new Set(window.filteredData.map(d => d.tipo))];
+      const typeCounts = types.map(t => window.filteredData.filter(d => d.tipo === t).length);
+      window.chartType.data.labels = types;
+      window.chartType.data.datasets[0].data = typeCounts;
+      window.chartType.update();
+    }
+
+    window.switchTab = function(tabKey) {
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+      document.querySelectorAll('[id^="tabBtn-"]').forEach(btn => {
+        btn.classList.remove('bg-brand-600', 'text-white', 'shadow');
+        btn.classList.add('text-slate-400');
+      });
+
+      document.getElementById(`view-${tabKey}`).classList.remove('hidden');
+      const activeBtn = document.getElementById(`tabBtn-${tabKey}`);
+      activeBtn.classList.add('bg-brand-600', 'text-white', 'shadow');
+      activeBtn.classList.remove('text-slate-400');
+
+      if (tabKey === 'charts') {
+        updateCharts();
+      }
+    };
+
+    window.setCalendarMonth = function(monthCode) {
+      window.selectedCalendarMonth = monthCode;
+      document.querySelectorAll('.cal-month-btn').forEach(btn => {
+        btn.classList.remove('bg-brand-600', 'text-white');
+        btn.classList.add('bg-slate-800', 'text-slate-400');
+      });
+
+      const activeBtn = document.getElementById(`monthBtn-${monthCode}`);
+      if (activeBtn) {
+        activeBtn.classList.add('bg-brand-600', 'text-white');
+        activeBtn.classList.remove('bg-slate-800', 'text-slate-400');
+      }
+
+      renderCalendar();
+    };
+
+    window.filterByAll = function() {
+      document.getElementById('urgencyFilter').value = 'all';
+      window.applyFilters();
+    };
+
+    window.filterByUrgent = function() {
+      document.getElementById('urgencyFilter').value = 'urgent';
+      window.applyFilters();
+    };
+
+    window.filterByOverdue = function() {
+      document.getElementById('urgencyFilter').value = 'overdue';
+      window.applyFilters();
+    };
+
+    window.openFormModal = function(recordId = null) {
+      if (recordId) {
+        const rec = window.dataset.find(d => d.id === recordId);
+        if (rec) {
+          document.getElementById('editRecordId').value = rec.id;
+          document.getElementById('formModalTitle').innerText = `Editar Servicio - ${rec.placa}`;
+          document.getElementById('formPlaca').value = rec.placa;
+          document.getElementById('formFecha').value = rec.fecha;
+          document.getElementById('formCosto').value = rec.costo;
+          document.getElementById('formTipo').value = rec.tipo;
+          document.getElementById('formTaller').value = rec.taller;
+          document.getElementById('formEstado').value = rec.estado;
+        }
+      } else {
+        document.getElementById('editRecordId').value = '';
+        document.getElementById('formModalTitle').innerText = 'Nuevo Servicio / Mantenimiento';
+        document.getElementById('recordForm').reset();
+        document.getElementById('formFecha').value = window.refDateStr;
+      }
+      document.getElementById('formModal').classList.remove('hidden');
+    };
+
+    window.closeFormModal = function() {
+      document.getElementById('formModal').classList.add('hidden');
+    };
+
+    window.handleFormSubmit = async function(e) {
+      e.preventDefault();
+
+      const editId = document.getElementById('editRecordId').value;
+      const placa = document.getElementById('formPlaca').value.trim().toUpperCase();
+      const fecha = document.getElementById('formFecha').value;
+      const costo = Number(document.getElementById('formCosto').value) || 0;
+      const tipo = document.getElementById('formTipo').value;
+      const taller = document.getElementById('formTaller').value.trim() || 'Taller Central';
+      const estado = document.getElementById('formEstado').value;
+
+      const recordId = editId ? editId : `srv-${Date.now()}`;
+      const record = { id: recordId, placa, fecha, costo, tipo, taller, estado };
+
+      window.closeFormModal();
+      await window.saveRecordCloud(record);
+    };
+
+    window.requestDeleteRecord = function(id) {
+      window.pendingDeleteId = id;
+      document.getElementById('confirmModal').classList.remove('hidden');
+    };
+
+    window.closeConfirmModal = async function(confirmed) {
+      document.getElementById('confirmModal').classList.add('hidden');
+      if (confirmed && window.pendingDeleteId) {
+        await window.deleteRecordCloud(window.pendingDeleteId);
+      }
+      window.pendingDeleteId = null;
+    };
+
+    window.readExcelFile = function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = async function(evt) {
+        try {
+          const data = new Uint8Array(evt.target.result);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+          const json = XLSX.utils.sheet_to_json(firstSheet);
+
+          if (json.length > 0) {
+            const newRecords = json.map((row, idx) => ({
+              id: `ex-${Date.now()}-${idx}`,
+              placa: String(row.Placa || row.PLACA || row.Camion || row.CAMION || `UNIDAD-${idx+1}`).toUpperCase(),
+              fecha: row.Fecha || row.FECHA || window.refDateStr,
+              tipo: row.Tipo || row.TIPO || row.Servicio || 'MANT PREVENTIVO',
+              taller: row.Taller || row.TALLER || 'Taller Asignado',
+              costo: Number(row.Costo || row.COSTO) || 450,
+              estado: row.Estado || row.ESTADO || 'Programado'
+            }));
+
+            await window.saveBatchCloud(newRecords);
+          } else {
+            showToast("El archivo Excel no contiene filas procesables", "error");
+          }
+        } catch (err) {
+          console.error(err);
+          showToast("Error al leer el archivo Excel", "error");
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    };
+
+    window.sendWhatsAppItem = function(id) {
+      const item = window.dataset.find(d => d.id === id);
+      if (!item) return;
+
+      const days = window.getDaysUntil(item.fecha);
+      const text = `🚨 *ALERTA VENCIMIENTO DE CAMIÓN* 🚛%0A%0A` +
+        `*Placa:* ${item.placa}%0A` +
+        `*Servicio:* ${item.tipo}%0A` +
+        `*Fecha:* ${item.fecha} (${days < 0 ? 'VENCIDO HACE ' + Math.abs(days) + ' DÍAS' : 'en ' + days + ' días'})%0A` +
+        `*Taller:* ${item.taller}%0A` +
+        `*Costo Est.:* $${item.costo}%0A` +
+        `*Estado:* ${item.estado}`;
+
+      window.open(`https://api.whatsapp.com/send?text=${text}`, '_blank');
+    };
+
+    window.sendWhatsAppSummary = function() {
+      const urgents = window.dataset.filter(d => {
+        if (d.estado === 'Completado') return false;
+        const days = window.getDaysUntil(d.fecha);
+        return days <= 15;
+      });
+
+      if (urgents.length === 0) {
+        showToast("No hay servicios próximos (≤15 días) para notificar", "info");
+        return;
+      }
+
+      let text = `🚛 *RESUMEN ALERTAS VENCIMIENTO* %0A%0A`;
+      urgents.forEach((u, i) => {
+        const days = window.getDaysUntil(u.fecha);
+        text += `${i+1}. *${u.placa}* - ${u.tipo}%0A   📅 ${u.fecha} (${days < 0 ? '🚨 VENCIDO (' + Math.abs(days) + 'd)' : (days === 0 ? '⚠️ HOY' : 'en ' + days + 'd')})%0A%0A`;
+      });
+
+      window.open(`https://api.whatsapp.com/send?text=${text}`, '_blank');
+    };
+
+    window.exportCSV = function() {
+      if (window.filteredData.length === 0) return;
+      let csv = "ID,Placa,Fecha,Tipo,Taller,Costo,Estado,EstadoAlerta\n";
+      window.filteredData.forEach(r => {
+        const info = window.getAlertStatusInfo(r);
+        csv += `"${r.id}","${r.placa}","${r.fecha}","${r.tipo}","${r.taller}",${r.costo},"${r.estado}","${info.label}"\n`;
+      });
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `vencimientos_camiones_2026.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      showToast("✓ Reporte CSV descargado", "success");
+    };
+
+    window.showToast = function(msg, type = "info") {
+      const container = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+      
+      let borderCol = type === 'success' ? 'border-emerald-500/40 bg-slate-900 text-emerald-300' : 
+                      type === 'error' ? 'border-rose-500/40 bg-slate-900 text-rose-300' : 
+                      'border-brand-500/40 bg-slate-900 text-brand-300';
+
+      toast.className = `p-3 rounded-xl border ${borderCol} shadow-2xl text-xs font-semibold flex items-center space-x-2 transition-all duration-300 transform translate-y-2 opacity-0 pointer-events-auto`;
+      toast.innerHTML = `<span>${msg}</span>`;
+      container.appendChild(toast);
+
+      setTimeout(() => {
+        toast.classList.remove('translate-y-2', 'opacity-0');
+      }, 10);
+
+      setTimeout(() => {
+        toast.classList.add('opacity-0', 'translate-y-2');
+        setTimeout(() => toast.remove(), 300);
+      }, 3500);
+    };
+
+    window.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('refDateInput').value = window.refDateStr;
+      initCharts();
+      initCloudPersistence();
+    });
+  </script>
+</body>
+</html>
